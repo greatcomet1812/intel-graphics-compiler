@@ -27,6 +27,15 @@ jobs:
     outputs:
       CLANG_CACHE_KEY: ${{ env.CLANG_CACHE_KEY }}
     steps:
+      - uses: actions/checkout@v3
+
+      - name: Start Energy Measurement
+        uses: DaxLynch/eco-ci-energy-estimation@main
+        with:
+          task: start-measurement
+          api-endpoint-add: "http://34.57.100.155:3000/environmental_data"
+          json-output: true
+          
       - uses: oprypin/find-latest-tag@v1
         with:
           repository: intel/intel-graphics-compiler
@@ -43,6 +52,7 @@ jobs:
         with:
           path: ./igc-official-release
           key: ${{ env.CLANG_CACHE_KEY }}
+          
       - name: checking for valid cache hit
         if: steps.cache-igc-release.outputs.cache-hit == 'true'
         run: |
@@ -50,20 +60,24 @@ jobs:
            echo "CLANG_CACHE_VALID=false" >> $GITHUB_ENV
            echo "CLANG_CACHE_KEY=${{ steps.get-latest-IGC-release-tag.outputs.tag }}-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}" >> $GITHUB_ENV
          fi
+         
       - name: creating a folder for downloaded deb files
         if: ${{ steps.cache-igc-release.outputs.cache-hit != 'true' || env.CLANG_CACHE_VALID != 'true' }}
         run: mkdir -p igc-official-release
+        
       - name: download latest igc release
         if:  ${{ steps.cache-igc-release.outputs.cache-hit != 'true' || env.CLANG_CACHE_VALID != 'true' }}
         working-directory: ./igc-official-release
         # To install openCL clang from Deb package, IGC must also be installed. Therefore, the last IGC release is also downloaded.
         run: curl -s https://api.github.com/repos/intel/intel-graphics-compiler/releases/latest | grep browser_download_url | egrep 'opencl-|core-' | cut -d '"' -f 4 | wget -qi -
+        
       - name: checking if downloaded deb files are here
         run: |
           ls ./igc-official-release
           if [[ $(ls ./igc-official-release | wc -c) == "0" ]]; then
             exit 1
           fi
+          
       - name: force redownload if invalid cache
         if: env.CLANG_CACHE_VALID != 'true'
         id: force-redownload
@@ -207,6 +221,18 @@ jobs:
             --env IGC_SHA=${{ steps.igc-current-short-Hash.outputs.sha_short }} \
             ubuntu:${{ matrix.ubuntu_version }} \
             sh /buildIGC.sh
+
+      - name: Build IGC Energy Measurement
+        uses: DaxLynch/eco-ci-energy-estimation@main
+        with:
+          task: get-measurement
+          label: "Build IGC"
+
+      - name: Show Energy Results
+        uses: DaxLynch/eco-ci-energy-estimation@main
+        with:
+          task: display-results
+          
       - name: creating folder to store output artifacts
         run: mkdir Artifacts
       - name: copying artifact from docker to github host
